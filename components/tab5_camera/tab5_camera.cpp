@@ -9,10 +9,6 @@
 #include "esp_timer.h"
 #include "driver/ledc.h"
 #include "esp_cache.h"
-
-// Ajout d'includes pour SCCB / camera / i2c (nécessaires selon ESP-IDF)
-// #include "esp_sccb.h"
-// #include "i2c_bus.h"
 #include "esp_cam_sensor.h"
 
 static const char *const TAG = "tab5_camera";
