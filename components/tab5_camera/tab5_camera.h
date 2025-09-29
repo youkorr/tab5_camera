@@ -25,14 +25,14 @@
 #include "freertos/queue.h"
 
 // Camera sensor includes based on configuration
-#ifdef CONFIG_CAMERA_SC2336
-#include "sc2336.h"
-#define CAM_DEVICE_ADDR SC2336_SCCB_ADDR
+#ifdef CONFIG_CAMERA_SC2356
+#include "sc202cs"
+#define CAM_DEVICE_ADDR SC2356_SCCB_ADDR
 #elif CONFIG_CAMERA_OV5645
 #include "ov5645.h"
 #define CAM_DEVICE_ADDR OV5645_SCCB_ADDR
 #else
-#define CAM_DEVICE_ADDR 0x30  // Default SC2336 address
+#define CAM_DEVICE_ADDR 0x36  // Default SC2356 address
 #endif
 
 #endif // ESP32-P4
