@@ -609,13 +609,13 @@ bool Tab5Camera::init_sensor_() {
     
     if (!sensor_detected) {
         ESP_LOGE(TAG, "No SC202CS sensor detected at I2C address 0x%02X - check wiring!", this->address_);
-        return false;
+        return false;  // ← ICI ÇA S'ARRÊTE AVANT D'APPELER init_sc202cs_sensor_()
     }
     
     ESP_LOGI(TAG, "I2C communication OK with SC202CS at address 0x%02X", this->address_);
     
     // Appeler la nouvelle fonction d'initialisation SC202CS
-    return this->init_sc202cs_sensor_();
+    return this->init_sc202cs_sensor_();  // ← CETTE LIGNE N'EST JAMAIS ATTEINTE
 }
 
 bool Tab5Camera::test_manual_capture_() {
