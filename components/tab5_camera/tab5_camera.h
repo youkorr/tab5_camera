@@ -11,8 +11,8 @@
 #define HAS_ESP32_P4_CAMERA 1
 
 #include "driver/i2c_master.h"
-#include "esp_sccb_intf.h"
-#include "esp_sccb_i2c.h" 
+//#include "esp_sccb_intf.h"
+//#include "esp_sccb_i2c.h" 
 #include "esp_cam_sensor.h"
 #include "esp_cam_ctlr_csi.h"
 #include "esp_cam_ctlr.h"
