@@ -161,10 +161,10 @@ bool Tab5Camera::detect_camera_sensor_() {
     .xclk_pin    = -1,  // We handle external clock separately
   };
 
-#ifdef CONFIG_CAMERA_SC2356
-  this->cam_sensor_ = sc2356_detect(&cam_config);
+#ifdef CONFIG_CAMERA_sc202cs
+  this->cam_sensor_ = sc202cs_detect(&cam_config);
   if (this->cam_sensor_) {
-    ESP_LOGI(TAG, "SC2356 camera sensor detected successfully");
+    ESP_LOGI(TAG, "SC202CS camera sensor detected successfully");
   }
 #elif CONFIG_CAMERA_OV5645
   this->cam_sensor_ = ov5645_detect(&cam_config);
@@ -173,8 +173,8 @@ bool Tab5Camera::detect_camera_sensor_() {
   }
 #else
   ESP_LOGW(TAG, "No specific camera sensor configured, using generic detection");
-  // Try SC2336 as default
-  this->cam_sensor_ = sc2356_detect(&cam_config);
+  // Try sc202cs as default
+  this->cam_sensor_ = sc202cs_detect(&cam_config);
   if (this->cam_sensor_) {
     ESP_LOGI(TAG, "Camera sensor detected (generic SC2356)");
   }
