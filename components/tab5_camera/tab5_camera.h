@@ -26,7 +26,7 @@
 
 // Camera sensor includes based on configuration
 #ifdef CONFIG_CAMERA_SC2336
-#include "Kconfig.sc202cs"
+#include "sc2336.h"
 #define CAM_DEVICE_ADDR SC2336_SCCB_ADDR
 #elif CONFIG_CAMERA_OV5645
 #include "ov5645.h"
