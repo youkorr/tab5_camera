@@ -14,6 +14,7 @@
 extern "C" {
   esp_cam_sensor_device_t *sc2336_detect(esp_cam_sensor_config_t *config);
   esp_cam_sensor_device_t *ov5645_detect(esp_cam_sensor_config_t *config);
+  esp_cam_sensor_device_t *sc202cs_detect(esp_cam_sensor_config_t *config); // Added for SC202CS support
 }
 
 static const char *const TAG = "tab5_camera";
@@ -172,6 +173,11 @@ bool Tab5Camera::detect_camera_sensor_() {
   this->cam_sensor_ = ov5645_detect(&cam_config);
   if (this->cam_sensor_) {
     ESP_LOGI(TAG, "OV5645 camera sensor detected successfully");
+  }
+#elif CONFIG_CAMERA_SC202CS
+  this->cam_sensor_ = sc202cs_detect(&cam_config);
+  if (this->cam_sensor_) {
+    ESP_LOGI(TAG, "SC202CS camera sensor detected successfully");
   }
 #else
   ESP_LOGW(TAG, "No specific camera sensor configured, using generic detection");
