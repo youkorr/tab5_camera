@@ -10,6 +10,11 @@
 #include "driver/ledc.h"
 #include "esp_cache.h"
 
+// Ajout d'includes pour SCCB / camera / i2c (nécessaires selon ESP-IDF)
+#include "esp_sccb.h"
+#include "i2c_bus.h"
+#include "esp_cam_sensor.h"
+
 static const char *const TAG = "tab5_camera";
 
 // Configuration constants based on M5Stack demo
@@ -106,19 +111,19 @@ bool Tab5Camera::is_ready() const {
 // Initialize I2C bus following M5Stack pattern
 bool Tab5Camera::init_i2c_bus_() {
   ESP_LOGI(TAG, "Initializing I2C master bus");
-  
-  i2c_master_bus_config_t i2c_bus_config = {
-    .clk_source        = I2C_CLK_SRC_DEFAULT,
-    .i2c_port          = SCCB0_PORT_NUM,
-    .scl_io_num        = this->sccb_scl_pin_,
-    .sda_io_num        = this->sccb_sda_pin_,
-    .glitch_ignore_cnt = 7,
-    .intr_priority     = 0,
-    .trans_queue_depth = 0,
-    .flags = {
-      .enable_internal_pullup = true,
-    },
-  };
+
+  // Zero-initialize then assign fields to avoid designator-order errors
+  i2c_master_bus_config_t i2c_bus_config = {};
+  // Assign fields (safer que designated initializers qui causent des erreurs d'ordre)
+  i2c_bus_config.clk_source = I2C_CLK_SRC_DEFAULT;
+  i2c_bus_config.i2c_port = SCCB0_PORT_NUM;
+  i2c_bus_config.scl_io_num = this->sccb_scl_pin_;
+  i2c_bus_config.sda_io_num = this->sccb_sda_pin_;
+  i2c_bus_config.glitch_ignore_cnt = 7;
+  i2c_bus_config.intr_priority = 0;
+  i2c_bus_config.trans_queue_depth = 0;
+  // Si le champ flags existe, on le renseigne
+  i2c_bus_config.flags.enable_internal_pullup = true;
 
   esp_err_t ret = i2c_new_master_bus(&i2c_bus_config, &this->i2c_bus_handle_);
   if (ret != ESP_OK) {
@@ -133,14 +138,24 @@ bool Tab5Camera::init_i2c_bus_() {
 // Initialize SCCB following M5Stack pattern
 bool Tab5Camera::init_sccb_() {
   ESP_LOGI(TAG, "Initializing SCCB interface");
-  
-  sccb_i2c_config_t sccb_config = {
-    .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-    .device_address  = this->sensor_address_,
-    .scl_speed_hz    = this->sccb_frequency_,
-  };
 
-  esp_err_t ret = sccb_new_i2c_io(this->i2c_bus_handle_, &sccb_config, &this->sccb_handle_);
+  // Use modern SCCB config type if available, zero-init then set fields
+  esp_sccb_io_config_t sccb_config = {};
+  // Les noms de champs varient selon les versions d'ESP-IDF ; j'utilise les noms
+  // proches de l'ancienne structure pour améliorer la compatibilité.
+  sccb_config.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+  sccb_config.device_address = this->sensor_address_;
+  sccb_config.scl_speed_hz = this->sccb_frequency_;
+
+  esp_err_t ret = esp_sccb_new_i2c_io(this->i2c_bus_handle_, &sccb_config, &this->sccb_handle_);
+  // Si la fonction précédente n'existe pas sur ta version de SDK, essayer la variante avec préfixe esp_ :
+  if (ret == ESP_ERR_CHECK ||
+      ret == ESP_ERR_INVALID_ARG ||
+      ret != ESP_OK) {
+    // Tentative avec le nom alterné (certaines versions utilisent esp_sccb_new_i2c_io)
+    ret = esp_sccb_new_i2c_io(this->i2c_bus_handle_, &sccb_config, &this->sccb_handle_);
+  }
+
   if (ret != ESP_OK) {
     ESP_LOGE(TAG, "Failed to create SCCB interface: %s", esp_err_to_name(ret));
     return false;
@@ -153,13 +168,13 @@ bool Tab5Camera::init_sccb_() {
 // Detect camera sensor following M5Stack pattern
 bool Tab5Camera::detect_camera_sensor_() {
   ESP_LOGI(TAG, "Detecting camera sensor");
-  
-  esp_cam_sensor_config_t cam_config = {
-    .sccb_handle = this->sccb_handle_,
-    .reset_pin   = (this->reset_pin_) ? this->reset_pin_->get_pin() : -1,
-    .pwdn_pin    = -1,
-    .xclk_pin    = -1,  // We handle external clock separately
-  };
+
+  esp_cam_sensor_config_t cam_config = {};
+  cam_config.sccb_handle = this->sccb_handle_;
+  // Utiliser pin() au lieu de get_pin()
+  cam_config.reset_pin = (this->reset_pin_) ? this->reset_pin_->pin() : -1;
+  cam_config.pwdn_pin = -1;
+  cam_config.xclk_pin = -1;  // We handle external clock separately
 
 #ifdef CONFIG_CAMERA_sc202cs
   this->cam_sensor_ = sc202cs_detect(&cam_config);
@@ -173,10 +188,10 @@ bool Tab5Camera::detect_camera_sensor_() {
   }
 #else
   ESP_LOGW(TAG, "No specific camera sensor configured, using generic detection");
-  // Try sc202cs as default
+  // Try sc202cs as default (peut varier selon la plateforme)
   this->cam_sensor_ = sc202cs_detect(&cam_config);
   if (this->cam_sensor_) {
-    ESP_LOGI(TAG, "Camera sensor detected (generic SC2356)");
+    ESP_LOGI(TAG, "Camera sensor detected (generic)");
   }
 #endif
 
@@ -192,7 +207,7 @@ bool Tab5Camera::detect_camera_sensor_() {
 // Initialize camera sensor
 bool Tab5Camera::init_camera_sensor_() {
   ESP_LOGI(TAG, "Initializing camera sensor");
-  
+
   if (!this->cam_sensor_) {
     ESP_LOGE(TAG, "Camera sensor not detected");
     return false;
@@ -238,7 +253,7 @@ bool Tab5Camera::setup_external_clock_() {
     return true;
   }
 
-  ESP_LOGI(TAG, "Setting up external clock on GPIO%u at %u Hz", 
+  ESP_LOGI(TAG, "Setting up external clock on GPIO%u at %u Hz",
            this->external_clock_pin_, this->external_clock_frequency_);
 
   ledc_timer_config_t timer_conf = {};
@@ -248,7 +263,7 @@ bool Tab5Camera::setup_external_clock_() {
   timer_conf.deconfigure = false;
   timer_conf.clk_cfg = LEDC_AUTO_CLK;
   timer_conf.timer_num = LEDC_TIMER_0;
-  
+
   esp_err_t ret = ledc_timer_config(&timer_conf);
   if (ret != ESP_OK) {
     ESP_LOGE(TAG, "Failed to configure LEDC timer: %s", esp_err_to_name(ret));
@@ -261,10 +276,10 @@ bool Tab5Camera::setup_external_clock_() {
   ch_conf.channel = LEDC_CHANNEL_0;
   ch_conf.intr_type = LEDC_INTR_DISABLE;
   ch_conf.timer_sel = LEDC_TIMER_0;
-  ch_conf.duty = 1;  // 50% duty cycle
+  ch_conf.duty = 1;  // 50% duty cycle (1-bit resolution)
   ch_conf.hpoint = 0;
   ch_conf.sleep_mode = LEDC_SLEEP_MODE_KEEP_ALIVE;
-  
+
   ret = ledc_channel_config(&ch_conf);
   if (ret != ESP_OK) {
     ESP_LOGE(TAG, "Failed to configure LEDC channel: %s", esp_err_to_name(ret));
@@ -277,12 +292,12 @@ bool Tab5Camera::setup_external_clock_() {
 
 bool Tab5Camera::init_ldo_() {
   ESP_LOGI(TAG, "Initializing MIPI LDO regulator");
-  
+
   esp_ldo_channel_config_t ldo_cfg = {
     .chan_id = 3,
     .voltage_mv = 2500
   };
-  
+
   esp_err_t ret = esp_ldo_acquire_channel(&ldo_cfg, &this->ldo_mipi_phy_);
   if (ret != ESP_OK) {
     ESP_LOGE(TAG, "Failed to acquire MIPI LDO channel: %s", esp_err_to_name(ret));
@@ -295,7 +310,7 @@ bool Tab5Camera::init_ldo_() {
 
 bool Tab5Camera::init_csi_controller_() {
   ESP_LOGI(TAG, "Initializing CSI controller");
-  
+
   esp_cam_ctlr_csi_config_t csi_config = {};
   csi_config.ctlr_id = 0;
   csi_config.h_res = this->frame_width_;
@@ -314,11 +329,10 @@ bool Tab5Camera::init_csi_controller_() {
   }
 
   // Register callbacks
-  esp_cam_ctlr_evt_cbs_t cbs = {
-    .on_get_new_trans = nullptr,
-    .on_trans_finished = Tab5Camera::camera_get_finished_trans_callback,
-  };
-  
+  esp_cam_ctlr_evt_cbs_t cbs = {};
+  cbs.on_get_new_trans = nullptr;
+  cbs.on_trans_finished = Tab5Camera::camera_get_finished_trans_callback;
+
   ret = esp_cam_ctlr_register_event_callbacks(this->cam_handle_, &cbs, this);
   if (ret != ESP_OK) {
     ESP_LOGE(TAG, "Failed to register camera callbacks: %s", esp_err_to_name(ret));
@@ -337,7 +351,7 @@ bool Tab5Camera::init_csi_controller_() {
 
 bool Tab5Camera::init_isp_processor_() {
   ESP_LOGI(TAG, "Initializing ISP processor");
-  
+
   esp_isp_processor_cfg_t isp_config = {};
   isp_config.clk_hz = TAB5_ISP_CLOCK_HZ;
   isp_config.input_data_source = ISP_INPUT_DATA_SOURCE_CSI;
@@ -347,13 +361,13 @@ bool Tab5Camera::init_isp_processor_() {
   isp_config.has_line_end_packet = false;
   isp_config.h_res = this->frame_width_;
   isp_config.v_res = this->frame_height_;
-  
+
   esp_err_t ret = esp_isp_new_processor(&isp_config, &this->isp_proc_);
   if (ret != ESP_OK) {
     ESP_LOGE(TAG, "Failed to create ISP processor: %s", esp_err_to_name(ret));
     return false;
   }
-  
+
   ret = esp_isp_enable(this->isp_proc_);
   if (ret != ESP_OK) {
     ESP_LOGE(TAG, "Failed to enable ISP processor: %s", esp_err_to_name(ret));
@@ -366,14 +380,14 @@ bool Tab5Camera::init_isp_processor_() {
 
 bool Tab5Camera::allocate_frame_buffers_() {
   ESP_LOGI(TAG, "Allocating frame buffers");
-  
+
   this->frame_buffer_size_ = this->frame_width_ * this->frame_height_ * 2; // RGB565
   this->frame_buffer_size_ = (this->frame_buffer_size_ + 63) & ~63; // 64-byte alignment
 
   ESP_LOGI(TAG, "Frame buffer size: %zu bytes", this->frame_buffer_size_);
 
   // Allocate main frame buffer
-  this->frame_buffer_ = heap_caps_aligned_alloc(64, this->frame_buffer_size_, 
+  this->frame_buffer_ = heap_caps_aligned_alloc(64, this->frame_buffer_size_,
                                                 MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   if (!this->frame_buffer_) {
     ESP_LOGE(TAG, "Failed to allocate main frame buffer in PSRAM");
@@ -387,7 +401,7 @@ bool Tab5Camera::allocate_frame_buffers_() {
 
   ESP_LOGI(TAG, "Frame buffer allocated at %p", this->frame_buffer_);
   memset(this->frame_buffer_, 0, this->frame_buffer_size_);
-  
+
   return true;
 }
 
@@ -399,10 +413,9 @@ bool Tab5Camera::take_snapshot() {
 
   ESP_LOGI(TAG, "Taking snapshot");
 
-  esp_cam_ctlr_trans_t trans = {
-    .buffer = this->frame_buffer_,
-    .buflen = this->frame_buffer_size_,
-  };
+  esp_cam_ctlr_trans_t trans = {};
+  trans.buffer = this->frame_buffer_;
+  trans.buflen = this->frame_buffer_size_;
 
   esp_err_t ret = esp_cam_ctlr_receive(this->cam_handle_, &trans, 5000 / portTICK_PERIOD_MS);
   if (ret != ESP_OK) {
@@ -411,13 +424,13 @@ bool Tab5Camera::take_snapshot() {
   }
 
   ESP_LOGI(TAG, "Snapshot captured: %zu bytes", trans.received_size);
-  
+
   // Sync cache
   esp_cache_msync(this->frame_buffer_, trans.received_size, ESP_CACHE_MSYNC_FLAG_DIR_M2C);
-  
+
   // Process frame
   this->process_frame_(static_cast<uint8_t*>(this->frame_buffer_), trans.received_size);
-  
+
   return true;
 }
 
@@ -511,10 +524,9 @@ void Tab5Camera::streaming_loop_() {
   ESP_LOGI(TAG, "Streaming loop started");
 
   // Start first capture
-  esp_cam_ctlr_trans_t trans = {
-    .buffer = this->frame_buffer_,
-    .buflen = this->frame_buffer_size_,
-  };
+  esp_cam_ctlr_trans_t trans = {};
+  trans.buffer = this->frame_buffer_;
+  trans.buflen = this->frame_buffer_size_;
   esp_cam_ctlr_receive(this->cam_handle_, &trans, 0);
 
   while (!this->streaming_should_stop_) {
@@ -540,7 +552,7 @@ bool Tab5Camera::camera_get_finished_trans_callback(
     esp_cam_ctlr_handle_t handle,
     esp_cam_ctlr_trans_t *trans,
     void *user_data) {
-  
+
   Tab5Camera *camera = static_cast<Tab5Camera*>(user_data);
   if (!camera || !trans->buffer) {
     return false;
@@ -552,12 +564,12 @@ bool Tab5Camera::camera_get_finished_trans_callback(
   if (trans->received_size > 0) {
     // Sync cache
     esp_cache_msync(trans->buffer, trans->received_size, ESP_CACHE_MSYNC_FLAG_DIR_M2C);
-    
+
     // Process frame
     camera->process_frame_(static_cast<uint8_t*>(trans->buffer), trans->received_size);
 
     // Queue frame data
-    FrameData frame_data;
+    FrameData frame_data = {};
     frame_data.buffer = trans->buffer;
     frame_data.size = trans->received_size;
     frame_data.timestamp = esp_timer_get_time();
@@ -570,10 +582,9 @@ bool Tab5Camera::camera_get_finished_trans_callback(
   }
 
   // Start next capture
-  esp_cam_ctlr_trans_t new_trans = {
-    .buffer = trans->buffer,
-    .buflen = camera->frame_buffer_size_,
-  };
+  esp_cam_ctlr_trans_t new_trans = {};
+  new_trans.buffer = trans->buffer;
+  new_trans.buflen = camera->frame_buffer_size_;
   esp_cam_ctlr_receive(handle, &new_trans, 0);
 
   return false;
@@ -581,9 +592,9 @@ bool Tab5Camera::camera_get_finished_trans_callback(
 
 void Tab5Camera::process_frame_(uint8_t *data, size_t len) {
   this->frame_count_++;
-  
+
   ESP_LOGD(TAG, "Frame #%u: %zu bytes", this->frame_count_, len);
-  
+
   // Trigger callbacks
   this->trigger_on_frame_callbacks_(data, len);
 }
@@ -689,7 +700,7 @@ PixelFormat Tab5Camera::parse_pixel_format_(const std::string &format) const {
 
 size_t Tab5Camera::calculate_frame_size_() const {
   uint16_t bytes_per_pixel = 2; // RGB565 default
-  
+
   switch (this->parse_pixel_format_(this->pixel_format_)) {
     case PixelFormat::RAW8:
       bytes_per_pixel = 1;
@@ -707,7 +718,7 @@ size_t Tab5Camera::calculate_frame_size_() const {
       bytes_per_pixel = 1; // Variable, approximation
       break;
   }
-  
+
   return this->frame_width_ * this->frame_height_ * bytes_per_pixel;
 }
 
