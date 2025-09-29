@@ -6,13 +6,12 @@
 
 #ifdef USE_ESP32
 
-// ESP32-P4 specific includes
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
 #define HAS_ESP32_P4_CAMERA 1
 
 #include "driver/i2c_master.h"
 #include "esp_sccb_intf.h"
-#include "esp_sccb_i2c.h" 
+#include "esp_sccb_i2c.h"
 #include "esp_cam_sensor.h"
 #include "esp_cam_ctlr_csi.h"
 #include "esp_cam_ctlr.h"
@@ -24,33 +23,31 @@
 #include "freertos/semphr.h"
 #include "freertos/queue.h"
 
-// Camera sensor includes based on configuration
-#ifdef CONFIG_CAMERA_SC2356
+#ifdef CONFIG_CAMERA_SC202CS
 #include "sc202cs.h"
-#define CAM_DEVICE_ADDR SC2356_SCCB_ADDR
-#elif CONFIG_CAMERA_OV5645
-#include "ov5645.h"
-#define CAM_DEVICE_ADDR OV5645_SCCB_ADDR
+#define CAM_DEVICE_ADDR SC202CS_SCCB_ADDR
 #else
-#define CAM_DEVICE_ADDR 0x36  // Default SC2356 address
+#define CAM_DEVICE_ADDR 0x36   // valeur de secours
 #endif
 
-#endif // ESP32-P4
+#endif // ESP32‑P4
 
 namespace esphome {
 namespace tab5_camera {
 
-// Énumérations
 enum class PixelFormat { RAW8, RAW10, YUV422, RGB565, JPEG };
 
 class Tab5Camera;
 
+/*---------------------------------------------------------------*/
+/*  Trigger transmis les données brutes d’une trame               */
 class OnFrameTrigger : public Trigger<uint8_t *, size_t> {
  public:
   explicit OnFrameTrigger(Tab5Camera *parent) : parent_(parent) {}
  protected:
   Tab5Camera *parent_;
 };
+/*---------------------------------------------------------------*/
 
 class Tab5Camera : public Component {
  public:
@@ -61,51 +58,41 @@ class Tab5Camera : public Component {
   void dump_config() override;
   float get_setup_priority() const override;
 
-  // Configuration methods
+  /*-------------------- configuration --------------------------*/
   void set_sensor_address(uint8_t address) { this->sensor_address_ = address; }
-  void set_sccb_scl_pin(uint8_t pin) { this->sccb_scl_pin_ = pin; }
-  void set_sccb_sda_pin(uint8_t pin) { this->sccb_sda_pin_ = pin; }
-  void set_sccb_frequency(uint32_t freq) { this->sccb_frequency_ = freq; }
-  void set_external_clock_pin(uint8_t pin) { this->external_clock_pin_ = pin; }
-  void set_external_clock_frequency(uint32_t freq) { this->external_clock_frequency_ = freq; }
+  void set_sccb_scl_pin(gpio_num_t pin)   { this->sccb_scl_pin_ = pin; }
+  void set_sccb_sda_pin(gpio_num_t pin)   { this->sccb_sda_pin_ = pin; }
+  void set_sccb_frequency(uint32_t freq){ this->sccb_frequency_ = freq; }
+  void set_external_clock_pin(gpio_num_t pin){ this->external_clock_pin_ = pin; }
+  void set_external_clock_frequency(uint32_t freq){ this->external_clock_frequency_ = freq; }
   void set_reset_pin(GPIOPin *pin) { this->reset_pin_ = pin; }
-  void set_resolution(uint16_t width, uint16_t height) {
-    this->frame_width_ = width;
-    this->frame_height_ = height;
-  }
-  void set_pixel_format(const std::string &format) { this->pixel_format_ = format; }
-  void set_framerate(uint8_t framerate) { this->framerate_ = framerate; }
+  void set_resolution(uint16_t w, uint16_t h){ this->frame_width_=w; this->frame_height_=h; }
+  void set_pixel_format(const std::string &fmt){ this->pixel_format_ = fmt; }
+  void set_framerate(uint8_t fps){ this->framerate_ = fps; }
 
-  // Public operations
+  /*-------------------- public API ----------------------------*/
   bool take_snapshot();
   bool start_streaming();
   bool stop_streaming();
   bool is_ready() const;
 
-  void add_on_frame_trigger(OnFrameTrigger *trigger) {
+  void add_on_frame_trigger(OnFrameTrigger *trigger){
     this->on_frame_triggers_.push_back(trigger);
   }
 
 #ifdef HAS_ESP32_P4_CAMERA
   bool is_streaming() const { return this->streaming_active_; }
-  uint8_t *get_frame_buffer() const { return static_cast<uint8_t *>(this->frame_buffer_); }
-  size_t get_frame_buffer_size() const { return this->frame_buffer_size_; }
+  uint8_t *get_frame_buffer() const { return static_cast<uint8_t*>(this->frame_buffer_); }
+  size_t   get_frame_buffer_size() const { return this->frame_buffer_size_; }
 #else
   bool is_streaming() const { return false; }
   uint8_t *get_frame_buffer() const { return nullptr; }
-  size_t get_frame_buffer_size() const { return 0; }
+  size_t   get_frame_buffer_size() const { return 0; }
 #endif
 
  protected:
 #ifdef HAS_ESP32_P4_CAMERA
-  struct FrameData {
-    void *buffer;
-    size_t size;
-    uint64_t timestamp;
-    bool valid;
-  };
-
-  // Core initialization methods - following M5Stack pattern
+  /*-------------------- low‑level init -----------------------*/
   bool init_i2c_bus_();
   bool init_sccb_();
   bool detect_camera_sensor_();
@@ -114,64 +101,60 @@ class Tab5Camera : public Component {
   bool setup_external_clock_();
   bool init_csi_controller_();
   bool init_isp_processor_();
-  
-  // Camera operations
+
+  /*-------------------- runtime -----------------------------*/
   bool allocate_frame_buffers_();
-  bool start_camera_controller_();
   void deinit_camera_();
-  
-  // Frame handling
+
   void process_frame_(uint8_t *data, size_t len);
   void trigger_on_frame_callbacks_(uint8_t *data, size_t len);
-  
-  // Callback functions for ESP-CAM driver
+
   static bool IRAM_ATTR camera_get_finished_trans_callback(
       esp_cam_ctlr_handle_t handle,
       esp_cam_ctlr_trans_t *trans,
       void *user_data);
 
-  // Streaming task
   static void streaming_task(void *parameter);
   void streaming_loop_();
 
-  // Hardware handles - following M5Stack structure
-  i2c_master_bus_handle_t i2c_bus_handle_{nullptr};
-  esp_sccb_io_handle_t sccb_handle_{nullptr};
-  esp_cam_sensor_device_t *cam_sensor_{nullptr};
-  esp_cam_ctlr_handle_t cam_handle_{nullptr};
-  isp_proc_handle_t isp_proc_{nullptr};
-  esp_ldo_channel_handle_t ldo_mipi_phy_{nullptr};
+  /*-------------------- hardware handles ---------------------*/
+  i2c_master_bus_handle_t   i2c_bus_handle_{nullptr};
+  esp_sccb_io_handle_t      sccb_handle_{nullptr};
+  esp_cam_sensor_device_t * cam_sensor_{nullptr};
+  esp_cam_ctlr_handle_t     cam_handle_{nullptr};
+  isp_proc_handle_t         isp_proc_{nullptr};
+  esp_ldo_channel_handle_t  ldo_mipi_phy_{nullptr};
 
-  // Frame buffers
+  /*-------------------- frame buffers -----------------------*/
   void *frame_buffer_{nullptr};
   size_t frame_buffer_size_{0};
   static constexpr size_t NUM_FRAME_BUFFERS = 3;
   void *frame_buffers_[NUM_FRAME_BUFFERS]{nullptr};
 
-  // State tracking
+  /*-------------------- state -------------------------------*/
   bool camera_initialized_{false};
   bool sensor_initialized_{false};
   bool streaming_active_{false};
   bool streaming_should_stop_{false};
 
-  // FreeRTOS objects
-  TaskHandle_t streaming_task_handle_{nullptr};
+  /*-------------------- FreeRTOS objects -------------------*/
+  TaskHandle_t   streaming_task_handle_{nullptr};
   SemaphoreHandle_t frame_ready_semaphore_{nullptr};
-  QueueHandle_t frame_queue_{nullptr};
+  QueueHandle_t    frame_queue_{nullptr};
 
-  // Constants
+  /*-------------------- constants ---------------------------*/
   static constexpr size_t STREAMING_TASK_STACK_SIZE = 4096;
   static constexpr UBaseType_t STREAMING_TASK_PRIORITY = 5;
   static constexpr size_t FRAME_QUEUE_SIZE = 3;
 #endif // HAS_ESP32_P4_CAMERA
 
  private:
-  // Configuration parameters
-  uint8_t sensor_address_{CAM_DEVICE_ADDR};
-  uint8_t sccb_scl_pin_{21};  // CONFIG_SCCB0_SCL
-  uint8_t sccb_sda_pin_{22};  // CONFIG_SCCB0_SDA
-  uint32_t sccb_frequency_{400000};  // CONFIG_SCCB0_FREQUENCY
-  uint8_t external_clock_pin_{25};
+  /*-------------------- configuration ------------------------*/
+  uint8_t  sensor_address_{CAM_DEVICE_ADDR};
+  gpio_num_t sccb_scl_pin_{GPIO_NUM_31};
+  gpio_num_t sccb_sda_pin_{GPIO_NUM_32};
+  uint32_t sccb_frequency_{400000};
+  gpio_num_t external_clock_pin_{GPIO_NUM_36};
   uint32_t external_clock_frequency_{24000000};
   GPIOPin *reset_pin_{nullptr};
 
@@ -180,11 +163,15 @@ class Tab5Camera : public Component {
   std::string pixel_format_{"RGB565"};
   uint8_t framerate_{15};
 
-  // State
+  /*-------------------- runtime state -----------------------*/
   std::vector<OnFrameTrigger *> on_frame_triggers_;
   uint32_t frame_count_{0};
 
-  // Helper methods
+  /*-------------------- helpers (new) ----------------------*/
+  PixelFormat parse_pixel_format_(const std::string &format) const;
+  size_t      calculate_frame_size_() const;
+
+  /*-------------------- error handling ---------------------*/
   void set_error_(const std::string &error);
   std::string last_error_;
   bool error_state_{false};
