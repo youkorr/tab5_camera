@@ -4,11 +4,11 @@
 #include "esphome/core/hal.h"
 #include "esp_timer.h"
 #include "driver/ledc.h"
-// #include "esp_cam_sensor.h"
+#include "esp_cam_sensor.h"
 #include "driver/jpeg_encode.h"
-// #include "esp_video_buffer.h"
-// #include "esp_video_internal.h"
-// #include "esp_cam_ctlr_csi.h"
+#include "esp_video_buffer.h"
+#include "esp_video_internal.h"
+#include "esp_cam_ctlr_csi.h"
 
 #ifdef USE_ESP32
 
@@ -387,7 +387,8 @@ bool Tab5Camera::init_sc202cs_sensor_() {
     bool device_found = false;
     for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
         this->set_i2c_address(addr);
-        if (this->read_bytes_raw(nullptr, 0)) {
+        uint8_t dummy;
+        if (this->read(&dummy, 0)) {
             ESP_LOGI(TAG, "Périphérique I2C détecté à l'adresse: 0x%02X", addr);
             device_found = true;
         }
@@ -404,7 +405,7 @@ bool Tab5Camera::init_sc202cs_sensor_() {
     
     // Test avec des écritures/lectures simples
     uint8_t dummy_write = 0x00;
-    if (!this->write_bytes_raw(&dummy_write, 1)) {
+    if (!this->write(&dummy_write, 1)) {
         ESP_LOGE(TAG, "Échec écriture basique à 0x36");
     } else {
         ESP_LOGI(TAG, "Écriture basique OK à 0x36");
@@ -498,7 +499,7 @@ bool Tab5Camera::read_register_16_msb_first(uint16_t reg, uint8_t *val) {
         static_cast<uint8_t>(reg & 0xFF)   // LSB
     };
     
-    if (!this->write_bytes_raw(buffer, 2) || !this->read_bytes_raw(val, 1)) {
+    if (!this->write(buffer, 2) || !this->read(val, 1)) {
         return false;
     }
     return true;
@@ -510,9 +511,24 @@ bool Tab5Camera::read_register_16_lsb_first(uint16_t reg, uint8_t *val) {
         static_cast<uint8_t>(reg >> 8)     // MSB
     };
     
-    if (!this->write_bytes_raw(buffer, 2) || !this->read_bytes_raw(val, 1)) {
+    if (!this->write(buffer, 2) || !this->read(val, 1)) {
         return false;
     }
+    return true;
+}
+
+bool Tab5Camera::write_register_16_lsb_first(uint16_t reg, uint8_t val) {
+    uint8_t buffer[3] = {
+        static_cast<uint8_t>(reg & 0xFF),  // LSB first
+        static_cast<uint8_t>(reg >> 8),    // MSB
+        val
+    };
+    
+    if (!this->write(buffer, 3)) {
+        ESP_LOGD(TAG, "Failed to write 16-bit register (LSB) 0x%04X = 0x%02X", reg, val);
+        return false;
+    }
+    
     return true;
 }
 
@@ -542,21 +558,6 @@ bool Tab5Camera::configure_sc202cs_sensor_lsb_first() {
     
     this->sensor_initialized_ = true;
     ESP_LOGI(TAG, "SC202CS configuration avec LSB first terminée");
-    
-    return true;
-}
-
-bool Tab5Camera::write_register_16_lsb_first(uint16_t reg, uint8_t val) {
-    uint8_t buffer[3] = {
-        static_cast<uint8_t>(reg & 0xFF),  // LSB first
-        static_cast<uint8_t>(reg >> 8),    // MSB
-        val
-    };
-    
-    if (!this->write_bytes_raw(buffer, 3)) {
-        ESP_LOGD(TAG, "Failed to write 16-bit register (LSB) 0x%04X = 0x%02X", reg, val);
-        return false;
-    }
     
     return true;
 }
