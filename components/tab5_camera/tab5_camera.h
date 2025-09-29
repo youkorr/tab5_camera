@@ -181,6 +181,7 @@ class Tab5Camera : public Component, public i2c::I2CDevice {
   bool configure_sc202cs_sensor_lsb_first();
   bool read_register_16_msb_first(uint16_t reg, uint8_t *val);
   bool read_register_16_lsb_first(uint16_t reg, uint8_t *val);
+  bool write_register_16_lsb_first(uint16_t reg, uint8_t val);
   
   // Tests et diagnostics
   bool test_manual_capture_();
@@ -280,7 +281,6 @@ class Tab5Camera : public Component, public i2c::I2CDevice {
 }  // namespace esphome
 
 #endif  // USE_ESP32
-
 
 
 
