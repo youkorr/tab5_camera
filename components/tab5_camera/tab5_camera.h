@@ -255,7 +255,8 @@ class Tab5Camera : public Component, public i2c::I2CDevice {
 
   // Méthodes pour registres 16-bit (SC202CS)
   bool write_register_16(uint16_t reg, uint8_t val);
-  bool read_register_16(uint16_t reg, uint16_t *val);
+  bool read_register_16(uint16_t reg, uint8_t *val);
+
 
 
   // Gestion des erreurs
