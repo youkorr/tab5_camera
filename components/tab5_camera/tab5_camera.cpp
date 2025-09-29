@@ -116,8 +116,8 @@ bool Tab5Camera::init_i2c_bus_() {
   
   i2c_master_bus_config_t i2c_bus_config = {};
   i2c_bus_config.i2c_port = SCCB0_PORT_NUM;
-  i2c_bus_config.scl_io_num = this->sccb_scl_pin_;
-  i2c_bus_config.sda_io_num = this->sccb_sda_pin_;
+  i2c_bus_config.scl_io_num = static_cast<gpio_num_t>(this->sccb_scl_pin_); // Cast explicite
+  i2c_bus_config.sda_io_num = static_cast<gpio_num_t>(this->sccb_sda_pin_); // Cast explicite
   i2c_bus_config.clk_source = I2C_CLK_SRC_DEFAULT;
   i2c_bus_config.glitch_ignore_cnt = 7;
   i2c_bus_config.intr_priority = 0;
@@ -159,7 +159,7 @@ bool Tab5Camera::detect_camera_sensor_() {
   
   esp_cam_sensor_config_t cam_config = {};
   cam_config.sccb_handle = this->sccb_handle_;
-  cam_config.reset_pin = (this->reset_pin_) ? static_cast<gpio_num_t>(this->reset_pin_->get_pin()) : GPIO_NUM_NC;
+  cam_config.reset_pin = (this->reset_pin_) ? static_cast<gpio_num_t>(this->reset_pin_->pin_) : GPIO_NUM_NC; // Accès direct à pin_
   cam_config.pwdn_pin = GPIO_NUM_NC;
   cam_config.xclk_pin = GPIO_NUM_NC;  // We handle external clock separately
   cam_config.sensor_port = ESP_CAM_SENSOR_MIPI_CSI;
@@ -196,6 +196,7 @@ bool Tab5Camera::detect_camera_sensor_() {
   this->sensor_initialized_ = true;
   return true;
 }
+
 
 // Initialize camera sensor
 bool Tab5Camera::init_camera_sensor_() {
