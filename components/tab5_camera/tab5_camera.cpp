@@ -592,31 +592,53 @@ bool Tab5Camera::init_sensor_() {
         ESP_LOGI(TAG, "Sensor already initialized, skipping");
         return true;
     }
-    
-    ESP_LOGI(TAG, "Attempting to initialize SC202CS camera sensor at I2C address 0x%02X", this->address_);
-    
-    uint8_t chip_id_high = 0, chip_id_low = 0;
 
-    // Lire Chip ID : SC202CS devrait renvoyer 0x20 0x2C (selon datasheet)
-    bool ok1 = this->read_register_16(0x3107, &chip_id_high);
-    bool ok2 = this->read_register_16(0x3108, &chip_id_low);
+    ESP_LOGI(TAG,
+             "Attempting to initialize SC202CS camera sensor at I2C address 0x%02X",
+             this->address_);
 
-    if (!(ok1 && ok2)) {
-        ESP_LOGE(TAG, "Failed to read SC202CS chip ID registers (0x3107/0x3108)");
-        return false;
+    bool sensor_detected = false;
+    uint16_t reg_val = 0;
+
+    // Lecture du registre d'ID – toujours présent
+    const uint16_t id_reg = 0x300A;
+    if (this->read_register_16(id_reg, &reg_val) == ESP_OK) {
+        ESP_LOGI(TAG, "SC202CS ID register 0x%04X = 0x%04X", id_reg, reg_val);
+        sensor_detected = true;
+    } else {
+        ESP_LOGW(TAG, "Failed to read ID register 0x%04X", id_reg);
     }
 
-    uint16_t chip_id = (chip_id_high << 8) | chip_id_low;
-    ESP_LOGI(TAG, "SC202CS detected: Chip ID = 0x%04X", chip_id);
-
-    if (chip_id != 0x202C) {  // Valeur attendue
-        ESP_LOGE(TAG, "Unexpected SC202CS chip ID 0x%04X (expected 0x202C)", chip_id);
-        return false;
+    // Si besoin, tester d'autres registres
+    const uint16_t extra_regs[] = {0x3107, 0x3108, 0x3000, 0x3001, 0x3002};
+    for (size_t i = 0; i < sizeof(extra_regs)/sizeof(extra_regs[0]); ++i) {
+        esp_err_t err = this->read_register_16(extra_regs[i], &reg_val);
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG,
+                     "SC202CS responded: reg 0x%04X = 0x%04X",
+                     extra_regs[i],
+                     reg_val);
+            sensor_detected = true;
+        } else {
+            ESP_LOGW(TAG,
+                     "Read reg 0x%04X failed, err=%s",
+                     extra_regs[i],
+                     esp_err_to_name(err));
+        }
     }
 
-    ESP_LOGI(TAG, "I2C communication OK with SC202CS at address 0x%02X", this->address_);
-    
-    // Appeler la fonction d'initialisation spécifique
+    if (!sensor_detected) {
+        ESP_LOGE(TAG,
+                 "No SC202CS sensor detected at I2C address 0x%02X - check wiring!",
+                 this->address_);
+        return false;      // ← on sort ici
+    }
+
+    ESP_LOGI(TAG,
+             "I2C communication OK with SC202CS at address 0x%02X",
+             this->address_);
+
+    // Maintenant on peut appeler l'initialisation propre du capteur
     return this->init_sc202cs_sensor_();
 }
 
