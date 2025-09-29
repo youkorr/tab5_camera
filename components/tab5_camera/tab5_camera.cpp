@@ -20,10 +20,7 @@ void Tab5Camera::setup() {
     this->set_error_("Failed to init I2C bus");
     return;
   }
-  if (!this->init_sccb_()) {
-    this->set_error_("Failed to init SCCB");
-    return;
-  }
+
   if (!this->detect_camera_sensor_()) {
     this->set_error_("No camera sensor detected");
     return;
@@ -103,27 +100,13 @@ bool Tab5Camera::init_i2c_bus_() {
   return true;
 }
 
-bool Tab5Camera::init_sccb_() {
-  ESP_LOGI(TAG, "Initializing SCCB interface");
 
-  sccb_io_config_t sccb_config = {};
-  sccb_config.dev_addr_length = I2C_ADDR_BIT_LEN_7;
-  sccb_config.device_address  = this->sensor_address_;
-  sccb_config.scl_speed_hz    = this->sccb_frequency_;
-
-  esp_err_t ret = sccb_new_i2c_io(this->i2c_bus_handle_, &sccb_config, &this->sccb_handle_);
-  if (ret != ESP_OK) {
-    ESP_LOGE(TAG, "Failed to create SCCB interface: %s", esp_err_to_name(ret));
-    return false;
-  }
-  return true;
-}
 
 bool Tab5Camera::detect_camera_sensor_() {
   ESP_LOGI(TAG, "Detecting camera sensor...");
 
   esp_cam_sensor_config_t cam_config = {};
-  cam_config.sccb_handle = this->sccb_handle_;
+ 
   cam_config.reset_pin   = (this->reset_pin_) ? this->reset_pin_->get_pin() : -1;
 
 #ifdef CONFIG_CAMERA_SC2356
