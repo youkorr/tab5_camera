@@ -595,28 +595,31 @@ bool Tab5Camera::init_sensor_() {
     
     ESP_LOGI(TAG, "Attempting to initialize SC202CS camera sensor at I2C address 0x%02X", this->address_);
     
-    // Test de communication I2C basique avec registres SC202CS
-    uint8_t test_data;
-    bool sensor_detected = false;
-    
-    const uint16_t sc202cs_test_regs[] = {0x3107, 0x3108, 0x3000, 0x3001, 0x3002};
-    for (size_t i = 0; i < sizeof(sc202cs_test_regs)/sizeof(sc202cs_test_regs[0]); i++) {
-        if (this->read_register_16(sc202cs_test_regs[i], &test_data)) {
-            ESP_LOGI(TAG, "SC202CS responded: reg 0x%04X = 0x%02X", sc202cs_test_regs[i], test_data);
-            sensor_detected = true;
-        }
+    uint8_t chip_id_high = 0, chip_id_low = 0;
+
+    // Lire Chip ID : SC202CS devrait renvoyer 0x20 0x2C (selon datasheet)
+    bool ok1 = this->read_register_16(0x3107, &chip_id_high);
+    bool ok2 = this->read_register_16(0x3108, &chip_id_low);
+
+    if (!(ok1 && ok2)) {
+        ESP_LOGE(TAG, "Failed to read SC202CS chip ID registers (0x3107/0x3108)");
+        return false;
     }
-    
-    if (!sensor_detected) {
-        ESP_LOGE(TAG, "No SC202CS sensor detected at I2C address 0x%02X - check wiring!", this->address_);
-        return false;  // ← ICI ÇA S'ARRÊTE AVANT D'APPELER init_sc202cs_sensor_()
+
+    uint16_t chip_id = (chip_id_high << 8) | chip_id_low;
+    ESP_LOGI(TAG, "SC202CS detected: Chip ID = 0x%04X", chip_id);
+
+    if (chip_id != 0x202C) {  // Valeur attendue
+        ESP_LOGE(TAG, "Unexpected SC202CS chip ID 0x%04X (expected 0x202C)", chip_id);
+        return false;
     }
-    
+
     ESP_LOGI(TAG, "I2C communication OK with SC202CS at address 0x%02X", this->address_);
     
-    // Appeler la nouvelle fonction d'initialisation SC202CS
-    return this->init_sc202cs_sensor_();  // ← CETTE LIGNE N'EST JAMAIS ATTEINTE
+    // Appeler la fonction d'initialisation spécifique
+    return this->init_sc202cs_sensor_();
 }
+
 
 bool Tab5Camera::test_manual_capture_() {
   ESP_LOGI(TAG, "=== MANUAL CAPTURE TEST WITH SC202CS ===");
