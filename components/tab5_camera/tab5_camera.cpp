@@ -161,7 +161,8 @@ bool Tab5Camera::detect_camera_sensor_() {
   cam_config.sccb_handle = this->sccb_handle_;
 
   // Récupérez le numéro de broche pour reset_pin
-  cam_config.reset_pin = (this->reset_pin_) ? static_cast<gpio_num_t>(this->reset_pin_->get_pin()) : GPIO_NUM_NC;
+  cam_config.reset_pin = (this->reset_pin_) ? static_cast<gpio_num_t>(this->reset_pin_->get_pin_number()) : GPIO_NUM_NC;
+
 
   cam_config.pwdn_pin = GPIO_NUM_NC;
   cam_config.xclk_pin = GPIO_NUM_NC;  // We handle external clock separately
