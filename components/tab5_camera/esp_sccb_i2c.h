@@ -4,8 +4,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#pragma once
+
 #include "driver/i2c_master.h"
 #include "esp_sccb_types.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /**
  * @brief SCCB I2C configuration
@@ -31,3 +37,7 @@ typedef struct {
  */
 esp_err_t sccb_new_i2c_io(i2c_master_bus_handle_t bus_handle, const sccb_i2c_config_t *config,
                           esp_sccb_io_handle_t *io_handle);
+
+#ifdef __cplusplus
+}
+#endif
