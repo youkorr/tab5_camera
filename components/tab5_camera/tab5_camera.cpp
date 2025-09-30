@@ -115,8 +115,8 @@ bool Tab5Camera::init_i2c_bus_() {
   
   i2c_master_bus_config_t i2c_bus_config = {};
   i2c_bus_config.i2c_port = SCCB0_PORT_NUM;
-  i2c_bus_config.scl_io_num = this->sccb_scl_pin_;
-  i2c_bus_config.sda_io_num = this->sccb_sda_pin_;
+  i2c_bus_config.scl_io_num = this->scl_pin_;
+  i2c_bus_config.sda_io_num = this->sda_pin_;
   i2c_bus_config.clk_source = I2C_CLK_SRC_DEFAULT;
   i2c_bus_config.glitch_ignore_cnt = 7;
   i2c_bus_config.intr_priority = 0;
