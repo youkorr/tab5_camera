@@ -14,7 +14,6 @@
 extern "C" {
   esp_cam_sensor_device_t *sc2336_detect(esp_cam_sensor_config_t *config);
   esp_cam_sensor_device_t *ov5645_detect(esp_cam_sensor_config_t *config);
-  esp_cam_sensor_device_t *sc202cs_detect(esp_cam_sensor_config_t *config); // Added for SC202CS support
 }
 
 static const char *const TAG = "tab5_camera";
@@ -116,8 +115,8 @@ bool Tab5Camera::init_i2c_bus_() {
   
   i2c_master_bus_config_t i2c_bus_config = {};
   i2c_bus_config.i2c_port = SCCB0_PORT_NUM;
-  i2c_bus_config.scl_io_num = static_cast<gpio_num_t>(this->sccb_scl_pin_); // Cast explicite
-  i2c_bus_config.sda_io_num = static_cast<gpio_num_t>(this->sccb_sda_pin_); // Cast explicite
+  i2c_bus_config.scl_io_num = this->sccb_scl_pin_;
+  i2c_bus_config.sda_io_num = this->sccb_sda_pin_;
   i2c_bus_config.clk_source = I2C_CLK_SRC_DEFAULT;
   i2c_bus_config.glitch_ignore_cnt = 7;
   i2c_bus_config.intr_priority = 0;
@@ -134,7 +133,24 @@ bool Tab5Camera::init_i2c_bus_() {
   return true;
 }
 
+// Initialize SCCB following M5Stack pattern
+bool Tab5Camera::init_sccb_() {
+  ESP_LOGI(TAG, "Initializing SCCB interface");
+  
+  sccb_i2c_config_t sccb_config = {};
+  sccb_config.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+  sccb_config.device_address = this->sensor_address_;
+  sccb_config.scl_speed_hz = this->sccb_frequency_;
 
+  esp_err_t ret = sccb_new_i2c_io(this->i2c_bus_handle_, &sccb_config, &this->sccb_handle_);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to create SCCB interface: %s", esp_err_to_name(ret));
+    return false;
+  }
+
+  ESP_LOGI(TAG, "SCCB interface initialized successfully");
+  return true;
+}
 
 // Detect camera sensor following M5Stack pattern
 bool Tab5Camera::detect_camera_sensor_() {
@@ -142,13 +158,7 @@ bool Tab5Camera::detect_camera_sensor_() {
   
   esp_cam_sensor_config_t cam_config = {};
   cam_config.sccb_handle = this->sccb_handle_;
-
-  // Récupérez le numéro de broche pour reset_pin
- 
-
-
-
-
+  cam_config.reset_pin = (this->reset_pin_) ? static_cast<gpio_num_t>(this->reset_pin_->get_pin()) : GPIO_NUM_NC;
   cam_config.pwdn_pin = GPIO_NUM_NC;
   cam_config.xclk_pin = GPIO_NUM_NC;  // We handle external clock separately
   cam_config.sensor_port = ESP_CAM_SENSOR_MIPI_CSI;
@@ -162,11 +172,6 @@ bool Tab5Camera::detect_camera_sensor_() {
   this->cam_sensor_ = ov5645_detect(&cam_config);
   if (this->cam_sensor_) {
     ESP_LOGI(TAG, "OV5645 camera sensor detected successfully");
-  }
-#elif CONFIG_CAMERA_SC202CS
-  this->cam_sensor_ = sc202cs_detect(&cam_config);
-  if (this->cam_sensor_) {
-    ESP_LOGI(TAG, "SC202CS camera sensor detected successfully");
   }
 #else
   ESP_LOGW(TAG, "No specific camera sensor configured, using generic detection");
@@ -185,7 +190,6 @@ bool Tab5Camera::detect_camera_sensor_() {
   this->sensor_initialized_ = true;
   return true;
 }
-
 
 // Initialize camera sensor
 bool Tab5Camera::init_camera_sensor_() {
@@ -676,7 +680,6 @@ void Tab5Camera::set_error_(const std::string &error) {
 
 #endif  // HAS_ESP32_P4_CAMERA
 #endif  // USE_ESP32
-
 
 
 
